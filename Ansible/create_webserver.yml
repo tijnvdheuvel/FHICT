@@ -1,0 +1,39 @@
+---
+
+- name: Create webserver.
+  hosts: webservers
+  vars_files:
+  - //home/tijn/Ansible/keys.yml
+  become: true
+  tasks:
+    - name: Ubuntu install firewalld
+      apt: name=firewalld state=present
+      when: ansible_os_family == "Debian" 
+    - name: Ubuntu install Apache
+      apt: name=apache2 state=present
+      when: ansible_os_family == "Debian"
+
+    - name: CentOS/Redhat Install apache httpd
+      yum: name=httpd state=present
+      when: ansible_os_family == "RedHat"
+      
+    - name: Start httpd service RedHat
+      service:
+        name: httpd
+        state: started
+      when: ansible_os_family == "RedHat"
+    - name: Start httpd service Debian
+      service:
+        name: apache2
+        state: started
+      when: ansible_os_family == "Debian"
+    - name: Open port 80 in firewall
+      firewalld:
+        port: 80/tcp
+        permanent: yes
+        state: enabled
+    - name: reload firewall
+      systemd:
+        name: firewalld
+        state: reloaded
+

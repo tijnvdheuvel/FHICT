@@ -1,0 +1,13 @@
+---
+- name: Update all servers
+  hosts: all
+  vars_files:
+  - //home/tijn/Ansible/keys.yml
+  become: true
+  tasks:
+    - name: Debian Update all packages
+      apt: name="*" state=latest
+      when: ansible_os_family == "Debian"
+    - name: Redhat Update all packages
+      yum: name="*" state=latest
+      when: ansible_os_family == "RedHat"
