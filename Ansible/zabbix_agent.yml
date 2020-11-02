@@ -1,0 +1,69 @@
+---
+
+- name: Install and configure zabbix agent.
+  hosts: all
+  vars_files:
+  - //home/tijn/Ansible/keys.yml
+  become: true
+  tasks:
+    - name: Check if Repository is already downloaded
+      stat: 
+        path: /home/zabbix_release_5.0-1+focal_all.deb 
+      register: download_check
+    - name: Check if PSK key already exists
+      stat: 
+        path: /etc/zabbix/zabbix_agentd.psk 
+      register: psk_check
+    - name: Download repository configuration
+      get_url:
+        url: https://repo.zabbix.com/zabbix/5.0/ubuntu/pool/main/z/zabbix-release/zabbix-release_5.0-1+focal_all.deb
+        dest: //home/zabbix-release_5.0-1+focal_all.deb
+      when: not download_check.stat.exists
+    - name: DPKG install the package (zabbix-release_5.0)
+      dpkg_selections:
+        name: zabbix-release_5.0-1+focal_all.deb
+        selection: install
+    - name: Update the package index & install zabbix-agent
+      apt:
+        name: zabbix-agent
+        update_cache: yes
+    - name: Generate PSK key
+      become: true
+      become_user: root
+      shell: sh -c "openssl rand -hex 32 > /etc/zabbix/zabbix_agentd.psk"
+      when: not psk_check.stat.exists
+    - name: copy zabbix_agentd.psk to //home/tijn/zabbix/keys
+      become: true
+      fetch:
+        src: /etc/zabbix/zabbix_agentd.psk
+        dest: /home/tijn/zabbix/keys/{{ ansible_hostname }}_PSK.psk
+    - name: Open UFW port 10050 to any(Zabbix)
+      ufw:
+        rule: allow
+        port: '10050'
+        proto: tcp
+        state: reloaded
+    - name: Open UFW port SSH to any
+      ufw: rule=allow port='22' proto=tcp state=enabled
+    - name: Set Agent Server to Zabbix_Server
+      replace: path=/etc/zabbix/zabbix_agentd.conf regexp='^Server=127.0.0.1' replace='Server={{ Zabbix_Server }}'
+    - name: Set Agent ServerActive to Zabbix_Server
+      replace: path=/etc/zabbix/zabbix_agentd.conf regexp='^# ServerActive=' replace='ServerActive={{ Zabbix_Server }}'
+    - name: Set Agent Hostname to envoirement
+      replace: path=/etc/zabbix/zabbix_agentd.conf regexp='^# Hostname=' replace='Hostname={{ ansible_hostname }}'
+    - name: Set Agent TLSConnect to psk
+      replace: path=/etc/zabbix/zabbix_agentd.conf regexp='^# TLSConnect=unencrypted' replace='TLSConnect=psk'
+    - name: Set Agent TLSAccept to psk
+      replace: path=/etc/zabbix/zabbix_agentd.conf regexp='^# TLSAccept=unencrypted' replace='TLSAccept=psk'
+    - name: Set Agent TLSPSKIdentity to Hostname_PSK
+      replace: path=/etc/zabbix/zabbix_agentd.conf regexp='^# TLSPSKIdentity=' replace='TLSPSKIdentity={{ ansible_hostname}}_PSK'
+    - name: Set Agent TLSPSKFile to file
+      replace: path=/etc/zabbix/zabbix_agentd.conf regexp='^# TLSPSKFile=' replace='TLSPSKFile=/etc/zabbix/zabbix_agentd.psk'
+    - name: Restart & Enable zabbix-agent.service
+      service:
+        name: zabbix-agent
+        state: restarted
+        enabled: yes
+
+        
+        

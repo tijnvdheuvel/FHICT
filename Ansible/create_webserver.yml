@@ -28,12 +28,11 @@
         state: started
       when: ansible_os_family == "Debian"
     - name: Open port 80 in firewall
-      firewalld:
-        port: 80/tcp
-        permanent: yes
-        state: enabled
+      ufw:
+        rule: allow
+        port: '80'
+        proto: tcp
     - name: reload firewall
-      systemd:
-        name: firewalld
-        state: reloaded
+      ufw:
+        state: enabled
 
