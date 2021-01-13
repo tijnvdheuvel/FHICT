@@ -1,11 +1,11 @@
 ﻿#Setting defaults
-$emailFinance = "[REMOVED]"
-$emailInkoop = "[REMOVED]"
+$emailFinance = "[redacted MAIL]"
+$emailInkoop = "[redacted MAIL]"
 #Setting mail settings
-$From = "[REMOVED]"; $SMTPServer = "smtp.gmail.com"; $SMTPPort = "465";
+$From = "[redacted sender MAIL]"; $SMTPServer = "smtp.gmail.com"; $SMTPPort = "465";
 ###Email
-$username   = '[REMOVED]'
-$password   = '[REMOVED]'
+$username   = '[redacted sender MAIL]'
+$password   = '[redacted Password]'
 $secstr     = New-Object -TypeName System.Security.SecureString
 $password.ToCharArray() | ForEach-Object {$secstr.AppendChar($_)}
 
@@ -13,6 +13,67 @@ Import-Csv "C:\Users\Administrator\Documents\OnBoarding.csv" -Delimiter ';' |
 ForEach-Object {
 #Create home directory
 #region AddUser
+$UserList = @($_.samAccountNaam)
+foreach ($u in $UserList) {
+    try {
+        $ADUser = Get-ADUser -Identity $u -ErrorAction Stop
+    }
+    catch {
+        if ($_ -like "*Cannot find an object with identity: '$u'*") {
+            "User '$u' does not exist."
+        }
+        else {
+            "An error occurred: $_"
+        }
+        continue
+    }
+    "User '$($ADUser.SamAccountName)' exists."
+    $Bestaat = $true
+}
+
+if ($Bestaat -eq $true){
+Get-ADUser -Identity $_.samAccountNaam | Move-ADObject -TargetPath "OU=medewerkers,OU=challenge,DC=challenge,DC=local"
+Set-ADUser -Identity $_.samAccountNaam -Enabled $true
+Get-ADGroupMember "Medewerker" | ForEach-Object { 
+Add-ADGroupMember -Identity "Finance" -Members "t.heuvel"
+Remove-ADGroupMember -Identity "Medewerker" -Members "t.heuvel"
+}
+$mailFinance = @{
+    from       = $From
+    to         = $emailFinance
+    subject    = ("Verzoek papierwerk " + $_.Naam)
+    smtpserver = "smtp.gmail.com"
+    port       = "587"
+    body       = ("Beste heer/mevrouw, `
+Zou u het papier werk op orde willen maken voor: " + $_.Naam + ". `
+Hij/Zij is sinds kort gewisseld van functie binnen het bedrijf. `
+De nieuwe functie is $_.GroupNaam `
+Het adress is: " + $_."address" + ", " + $_.plaatsnaam)
+    credential = New-Object -typename System.Management.Automation.PSCredential -argumentlist $username, $secstr
+    usessl     = $true
+    verbose    = $true
+}
+$mailInkoop = @{
+    from       = $From
+    to         = $emailInkoop
+    subject    = ("Verzoek werkkleding " + $_.Naam)
+    smtpserver = "smtp.gmail.com"
+    port       = "587"
+    body       = ("Beste heer/mevrouw, `
+Zou u een bestelling voor een nieuwe set werkkleding willen plaatsen voor: " + $_.Naam + ". `
+Het type kleding is voor $_.GroupNaam `
+Het adress is: " + $_."address" + ", " + $_.plaatsnaam + ". `
+Met vriendelijke groet, `
+Het IT beheer")
+    credential = New-Object -typename System.Management.Automation.PSCredential -argumentlist $username, $secstr
+    usessl     = $true
+    verbose    = $true
+}
+##Send-MailMessage @mailFinance; echo "mailFinance succesvol verzonden"
+##Send-MailMessage @mailInkoop; echo "mailinkoop succesvol verzonden"
+} else {
+#DEBUG
+Write-Host "Alternate path"
 New-ADUser `
 -Name $_.Naam `
 -GivenName $_.voornaam `
@@ -26,6 +87,9 @@ New-ADUser `
 -ChangePasswordAtLogon $true `
 -StreetAddress $_."address" `
 -City $_.plaatsnaam
+if ($_.manager -ne $null) {
+Set-ADUser -Identity $_.samAccountNaam -Manager (Get-ADUser -Identity $_.Manager)
+}
 echo ("User: " + $_.Naam + " toegevoegd." )
 #Add each user to the group specified in the file
 Add-ADGroupMember `
@@ -63,8 +127,8 @@ Het IT beheer")
     usessl     = $true
     verbose    = $true
 }
-#Send-MailMessage @mailFinance; echo "mailFinance succesvol verzonden"
-#Send-MailMessage @mailInkoop; echo "mailinkoop succesvol verzonden"
+Send-MailMessage @mailFinance; echo "mailFinance succesvol verzonden"
+Send-MailMessage @mailInkoop; echo "mailinkoop succesvol verzonden"
 #endregion Mail
 
 #Create network share
@@ -87,5 +151,7 @@ $User = Get-ADUser -Identity $_.samAccountNaam
     Set-Acl -Path $homeShare -AclObject $acl -ea Stop
 
     Write-Host ("HomeDirectory created at {0}" -f $fullPath)
-}
+
 #endregion SetHome
+}
+}
